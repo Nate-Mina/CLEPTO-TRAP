@@ -1,0 +1,23 @@
+{
+  "entities": {
+    "SecurityEvent": {
+      "title": "SecurityEvent",
+      "description": "An event captured by the security camera AI.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "description": { "type": "string" },
+        "confidence": { "type": "number" },
+        "imageUrl": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "description", "confidence", "imageUrl"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/events/{eventId}": {
+      "schema": { "$ref": "#/entities/SecurityEvent" },
+      "description": "The events recognized for this user."
+    }
+  }
+}

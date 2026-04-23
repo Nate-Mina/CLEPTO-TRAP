@@ -1,0 +1,50 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+  
+    // Default Deny All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Auth Helpers
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    
+    // Type/Schema Helpers
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+    
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isValidSecurityEvent(data) {
+       return data.keys().hasAll(['type', 'description', 'confidence', 'imageUrl']) 
+              && data.type is string && data.type.size() > 0 && data.type.size() <= 64
+              && data.description is string && data.description.size() <= 4096
+              && data.confidence is number
+              && data.imageUrl is string && data.imageUrl.size() <= 1048576; // allow large base64 thumbnails up to ~1MB
+    }
+
+    // Rules for /users/{userId}/events/{eventId}
+    match /users/{userId}/events/{eventId} {
+       allow read: if isOwner(userId);
+       allow list: if isOwner(userId);
+       
+       allow create: if isOwner(userId) 
+                     && isValidId(eventId)
+                     && isValidSecurityEvent(incoming())
+                     && incoming().timestamp == request.time;
+                     
+       allow update: if isOwner(userId)
+                     && isValidId(eventId)
+                     && isValidSecurityEvent(incoming())
+                     // Let's assume events are largely immutable for users, but if they change
+                     && incoming().timestamp == existing().timestamp; // Protect timestamp from moving
+
+       allow delete: if isOwner(userId) && isValidId(eventId);
+    }
+  }
+}

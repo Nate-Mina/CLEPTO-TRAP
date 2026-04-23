@@ -10,77 +10,117 @@
       </div>
     </div>
     <div class="flex items-center gap-4">
-      <input type="file" #fileInput accept="video/*" class="hidden" (change)="handleFileUpload($event)">
+      <input type="file" #fileInput accept="video/*" class="hidden" multiple (change)="handleFileUpload($event)">
       <button mat-flat-button color="primary" (click)="triggerFileInput()" class="rounded-lg px-6 border border-white/10 !bg-[#222] hover:!bg-[#333] transition-colors">
         <div class="flex items-center gap-2">
           <mat-icon class="text-gray-400">folder_open</mat-icon>
-          <span class="font-medium text-gray-300">Load Test Feed</span>
+          <span class="font-medium text-gray-300">Load Test Feeds</span>
         </div>
       </button>
-      <button mat-flat-button [color]="isMonitoring() ? 'warn' : 'accent'" (click)="toggleMonitoring()" class="rounded-lg px-6 shadow-lg shadow-blue-900/20" [ngClass]="{'!bg-red-600': isMonitoring(), '!bg-blue-600': !isMonitoring()}">
+      <button mat-flat-button color="accent" (click)="addCameraFeed()" class="rounded-lg px-6 shadow-lg shadow-blue-900/20 !bg-blue-600">
         <div class="flex items-center gap-2 text-white">
-          <mat-icon>{{ isMonitoring() ? 'stop' : 'podcasts' }}</mat-icon>
-          <span class="font-medium font-mono uppercase tracking-wider">{{ isMonitoring() ? 'Disconnect RTSP' : 'Connect Camera' }}</span>
+          <mat-icon>videocam</mat-icon>
+          <span class="font-medium font-mono uppercase tracking-wider">Add Webcam</span>
         </div>
       </button>
+
+      <!-- Auth Segment -->
+      <div class="border-l border-gray-700 h-8 mx-2"></div>
+      @if (authLoaded()) {
+        @if (user()) {
+          <div class="flex items-center gap-3">
+             <img [src]="user()?.photoURL || 'https://via.placeholder.com/32'" class="w-8 h-8 rounded-full border border-gray-700 shadow-md">
+             <button mat-stroked-button (click)="logout()" class="border-gray-700 text-gray-300 hover:text-white rounded-lg px-4 text-sm font-mono">Sign Out</button>
+          </div>
+        } @else {
+          <button mat-flat-button (click)="login()" class="!bg-white text-gray-900 rounded-lg px-6 shadow-md font-medium text-sm">
+             <div class="flex items-center gap-2">
+                <mat-icon class="text-blue-500">account_circle</mat-icon> Sign in with Google
+             </div>
+          </button>
+        }
+      }
     </div>
   </mat-toolbar>
 
-  <main class="flex-grow p-4 md:p-8 flex flex-col lg:flex-row gap-8 max-w-[1700px] mx-auto w-full">
+  <main class="flex-grow p-4 md:p-8 flex flex-col xl:flex-row gap-8 max-w-[1900px] mx-auto w-full">
     
-    <!-- Camera Feed Column -->
+    <!-- Camera Feeds Grid -->
     <div class="flex-grow flex flex-col gap-6">
-      <div class="bg-black rounded-lg shadow-2xl border border-gray-800 overflow-hidden relative aspect-video flex items-center justify-center ring-1 ring-white/5">
-        <video #videoElement class="w-full h-full object-cover" [class.hidden]="!isMonitoring()" playsinline muted></video>
-        
-        @if (!isMonitoring()) {
+
+      @if (feeds().length === 0) {
+        <div class="bg-black rounded-lg shadow-2xl border border-gray-800 overflow-hidden relative flex-grow flex items-center justify-center ring-1 ring-white/5 min-h-[500px]">
           <div class="absolute inset-0 flex flex-col items-center justify-center text-gray-500 bg-[#0d0d0d] font-mono">
             <mat-icon class="text-6xl mb-4 opacity-30">videocam_off</mat-icon>
-            <p class="text-xl font-medium text-gray-400 uppercase tracking-widest">VMS Stream Offline</p>
-            <p class="text-xs opacity-75 mt-2">Awaiting RTSP/Webcam connection</p>
+            <p class="text-xl font-medium text-gray-400 uppercase tracking-widest">VMS Streams Offline</p>
+            <p class="text-xs opacity-75 mt-2">Add a camera or load multiple test feeds</p>
           </div>
-        }
-        
-        @if (isMonitoring()) {
-          <!-- Mock RTSP Overlay Elements -->
-          <div class="absolute top-4 left-4 flex flex-col gap-2">
-            <div class="flex items-center gap-3 bg-black/80 backdrop-blur-md text-white px-3 py-1.5 rounded-md text-xs font-mono border border-white/10 shadow-lg">
-              <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
-              REC
+        </div>
+      } @else {
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 h-full content-start">
+          @for (feed of feeds(); track feed.id) {
+            <div class="bg-black rounded-lg shadow-xl border border-gray-800 overflow-hidden relative aspect-video flex items-center justify-center ring-1 ring-white/5 group">
+              <video [id]="'video-' + feed.id" class="w-full h-full object-cover" playsinline muted loop></video>
+              <canvas [id]="'canvas-' + feed.id" class="hidden"></canvas>
+              
+              <button mat-icon-button (click)="removeFeed(feed.id)" class="absolute top-2 right-2 text-white/50 hover:text-white z-50 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                 <mat-icon>close</mat-icon>
+              </button>
+  
+              <!-- Overlays -->
+              <div class="absolute top-4 left-4 flex flex-col gap-2">
+                <div class="flex items-center gap-3 bg-black/80 backdrop-blur-md text-white px-3 py-1.5 rounded-md text-xs font-mono border border-white/10 shadow-lg" [class.opacity-50]="!feed.hasMotion">
+                  <div class="w-2 h-2 rounded-full" [ngClass]="feed.hasMotion ? 'bg-red-500 animate-pulse' : 'bg-gray-500'"></div>
+                  {{ feed.hasMotion ? 'MOTION' : 'STANDBY' }}
+                </div>
+                <div class="flex items-center gap-2 bg-black/80 backdrop-blur-md text-emerald-400 px-3 py-1.5 rounded-md text-xs font-mono border border-white/10 shadow-lg transition-colors" [ngClass]="{'!text-blue-400': feed.isAnalyzing, '!text-gray-400': !feed.hasMotion}">
+                  <mat-icon class="text-[16px] w-4 h-4" [class.animate-spin]="feed.isAnalyzing">{{ feed.isAnalyzing ? 'data_usage' : 'memory' }}</mat-icon>
+                  AI: {{ feed.isAnalyzing ? 'ACTIVE' : 'IDLE' }}
+                </div>
+              </div>
+  
+              <div class="absolute bottom-8 right-4 text-white/50 text-xs font-mono text-right drop-shadow-md">
+                <div class="uppercase tracking-wider font-bold truncate max-w-[150px]">{{ feed.name.split('.')[0] }}</div>
+                <div class="opacity-70">[ID: {{ feed.id }}]</div>
+              </div>
+  
+              <!-- Threat Level Indicator Overlay -->
+              <div class="absolute bottom-8 left-4 flex flex-col gap-1 transition-opacity" [class.opacity-40]="!feed.hasMotion && !feed.isAnalyzing && feed.status === 'normal'">
+                <div class="text-[10px] font-mono text-gray-400 uppercase tracking-widest drop-shadow-md">Threat Level</div>
+                <div class="font-mono text-xl font-bold flex items-center gap-2" [ngClass]="getConfidenceTextColor(feed.status)">
+                   @if (feed.confidence > 0) {
+                     {{ feed.confidence | percent:'1.0-0' }} {{ feed.status }}
+                   } @else {
+                     ANALYZING...
+                   }
+                </div>
+                <div class="text-xs font-mono mt-1 drop-shadow-md flex items-center gap-2 transition-colors" 
+                     [ngClass]="{'text-blue-400': feed.isAnalyzing, 'text-orange-400': !feed.hasMotion, 'text-gray-400': !feed.isAnalyzing && feed.hasMotion}">
+                   @if (feed.isAnalyzing) {
+                     <mat-icon class="text-[14px] w-4 h-4 animate-spin text-blue-400">data_usage</mat-icon>
+                   } @else if (!feed.hasMotion) {
+                     <mat-icon class="text-[14px] w-4 h-4 text-orange-400">motion_photos_paused</mat-icon>
+                   } @else if (feed.aiStage.includes('Buffer')) {
+                     <mat-icon class="text-[14px] w-4 h-4 text-emerald-400">history_toggle_off</mat-icon>
+                   } @else {
+                     <mat-icon class="text-[14px] w-4 h-4 text-emerald-400">memory</mat-icon>
+                   }
+                   {{ feed.aiStage }}
+                </div>
+              </div>
+  
+              <!-- Confidence Progress Bar -->
+              <div class="absolute bottom-0 left-0 right-0 h-1.5 bg-gray-900/80 backdrop-blur z-20">
+                <div class="h-1.5 transition-all duration-1000 ease-in-out" 
+                     [style.width.%]="feed.confidence > 0 ? (feed.confidence * 100) : (feed.hasMotion ? 100 : 0)" 
+                     [ngClass]="feed.confidence > 0 ? getConfidenceBarColor(feed.status) : (feed.hasMotion ? 'bg-blue-500 animate-pulse' : 'bg-transparent')">
+                </div>
+              </div>
             </div>
-            <div class="flex items-center gap-2 bg-black/80 backdrop-blur-md text-emerald-400 px-3 py-1.5 rounded-md text-xs font-mono border border-white/10 shadow-lg">
-              <mat-icon class="text-[16px] w-4 h-4">memory</mat-icon>
-              Temporal AI: ACTIVE
-            </div>
-          </div>
-          
-          <div class="absolute bottom-8 right-4 text-white/50 text-xs font-mono text-right drop-shadow-md">
-            <div>CAM-01 / STORE-FRONT</div>
-            <div>[IP: 192.168.1.64]</div>
-          </div>
-          
-          <!-- Threat Level Indicator Overlay -->
-          <div class="absolute bottom-8 left-4 flex flex-col gap-1">
-            <div class="text-[10px] font-mono text-gray-400 uppercase tracking-widest drop-shadow-md">Threat Level</div>
-            <div class="font-mono text-xl font-bold flex items-center gap-2" [ngClass]="getConfidenceTextColor(currentStatus())">
-               @if (currentConfidence() > 0) {
-                 {{ currentConfidence() | percent:'1.0-0' }} {{ currentStatus() }}
-               } @else {
-                 ANALYZING...
-               }
-            </div>
-          </div>
-
-          <!-- Confidence Progress Bar -->
-          <div class="absolute bottom-0 left-0 right-0 h-1.5 bg-gray-900/80 backdrop-blur z-20">
-            <div class="h-full transition-all duration-1000 ease-in-out" 
-                 [style.width.%]="currentConfidence() > 0 ? (currentConfidence() * 100) : 100" 
-                 [ngClass]="currentConfidence() > 0 ? getConfidenceBarColor(currentStatus()) : 'bg-blue-500 animate-pulse'">
-            </div>
-          </div>
-        }
-      </div>
-
+          }
+        </div>
+      }
+      
       <!-- Latest Alert Banner -->
       @if (latestEvent()) {
         <div class="rounded-xl shadow-2xl border-l-[6px] p-5 transition-all duration-300 transform" [ngClass]="getEventColor(latestEvent().type).replace('bg-', 'bg-opacity-10 bg-').replace('text-', 'text-').replace('border-', 'border-')">
