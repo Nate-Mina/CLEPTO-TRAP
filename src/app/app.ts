@@ -80,6 +80,12 @@ export class App implements OnDestroy, OnInit {
   videoBlobs = signal<Map<string, string>>(new Map());
   selectedEvent = signal<SecurityEvent | null>(null);
 
+  currentUserRole = signal<'admin' | 'manager' | 'viewer'>('admin');
+  
+  canManageFeeds = computed(() => this.currentUserRole() === 'admin');
+  canGenerateDigest = computed(() => this.currentUserRole() === 'admin' || this.currentUserRole() === 'manager');
+  canSeeConfidence = computed(() => this.currentUserRole() === 'admin' || this.currentUserRole() === 'manager');
+  
   private monitorInterval: ReturnType<typeof setInterval> | null = null;
   private ai: GoogleGenAI;
   private eventsUnsubscribe: (() => void) | null = null;

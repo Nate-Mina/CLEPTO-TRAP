@@ -43,9 +43,11 @@
               <video [id]="'video-' + feed.id" class="w-full h-full object-cover" playsinline muted loop></video>
               <canvas [id]="'canvas-' + feed.id" class="hidden"></canvas>
               
-              <button mat-icon-button (click)="removeFeed(feed.id)" class="absolute top-2 right-2 text-white/50 bg-black/40 backdrop-blur-md rounded-full w-8 h-8 flex items-center justify-center opacity-70">
-                 <mat-icon class="text-[18px]">close</mat-icon>
-              </button>
+              @if (canManageFeeds()) {
+                <button mat-icon-button (click)="removeFeed(feed.id)" class="absolute top-2 right-2 text-white/50 bg-black/40 backdrop-blur-md rounded-full w-8 h-8 flex items-center justify-center opacity-70">
+                   <mat-icon class="text-[18px]">close</mat-icon>
+                </button>
+              }
   
               <!-- Overlays -->
               <div class="absolute top-3 left-3 flex flex-row gap-2">
@@ -106,9 +108,11 @@
             <div class="flex-grow">
               <div class="flex items-center justify-between mb-1">
                 <h3 class="font-bold text-base uppercase tracking-tight" [ngClass]="getEventColor(latestEvent().type).split(' ')[1]">{{ latestEvent().type }} ALERT</h3>
-                <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-black/40 border border-white/5">
-                  {{ latestEvent().confidence | percent }}
-                </span>
+                @if (canSeeConfidence()) {
+                  <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-black/40 border border-white/5">
+                    {{ latestEvent().confidence | percent }}
+                  </span>
+                }
               </div>
               <p class="text-xs opacity-90 font-medium leading-relaxed text-gray-200">{{ latestEvent().description }}</p>
               <div class="flex items-center gap-3 mt-2 text-[10px] font-mono opacity-60">
@@ -128,7 +132,7 @@
             <mat-icon class="text-[16px] w-4 h-4">list_alt</mat-icon>
             Recent Incidents
           </h2>
-          <button (click)="generateDigest('daily')" [disabled]="isGeneratingDigest() || events().length === 0" class="text-[10px] font-mono text-blue-400 hover:text-blue-300 disabled:opacity-50 flex items-center gap-1 transition-colors">
+          <button (click)="generateDigest('daily')" [disabled]="isGeneratingDigest() || events().length === 0" class="text-[10px] font-mono text-blue-400 hover:text-blue-300 disabled:opacity-50 flex items-center gap-1 transition-colors" [class.hidden]="!canGenerateDigest()">
             @if (isGeneratingDigest()) {
                <mat-icon class="text-[12px] w-3 h-3 animate-spin">data_usage</mat-icon>
             } @else {
@@ -181,6 +185,7 @@
   <!-- Bottom Navigation / Action Bar -->
   <div class="absolute bottom-0 left-0 right-0 bg-[#0a0a0a]/90 backdrop-blur-xl border-t border-gray-800 pb-[env(safe-area-inset-bottom)] z-30">
     <div class="flex justify-evenly items-center px-2 py-3">
+    @if (canManageFeeds()) {
       <input type="file" #fileInput accept="video/*" class="hidden" multiple (change)="handleFileUpload($event)">
       <button (click)="triggerFileInput()" class="flex flex-col items-center gap-1 w-20 text-gray-400 hover:text-white transition-colors active:scale-95">
         <div class="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center border border-gray-800">
@@ -195,6 +200,7 @@
         </div>
         <span class="text-[10px] font-medium tracking-wide absolute -bottom-4">Camera</span>
       </button>
+    }
 
       <button (click)="toggleSettings()" class="flex flex-col items-center gap-1 w-20 text-gray-400 hover:text-white transition-colors active:scale-95">
         <div class="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center border border-gray-800">
@@ -218,18 +224,31 @@
        </div>
        
        <div class="space-y-6">
-         <div class="flex items-center justify-between p-3 bg-[#1a1a1a] rounded-xl border border-gray-800">
-           <div class="flex-grow pr-4">
-             <p class="text-sm font-medium text-gray-200">Auto-Save 1 min Clips</p>
-             <p class="text-[10px] text-gray-500 mt-1 leading-tight">Automatically downloads 60s video and text log on high-confidence alerts.</p>
-           </div>
-           <button (click)="autoSaveEnabled.set(!autoSaveEnabled())" 
-             class="w-11 h-6 rounded-full transition-colors relative flex-shrink-0"
-             [ngClass]="autoSaveEnabled() ? 'bg-blue-600' : 'bg-gray-700'">
-             <div class="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-all shadow"
-               [ngClass]="autoSaveEnabled() ? 'left-5' : 'left-0.5'"></div>
-           </button>
+         <!-- Role Selector for Demo purposes -->
+         <div class="flex flex-col gap-2 p-3 bg-[#1a1a1a] rounded-xl border border-gray-800">
+            <p class="text-sm font-medium text-gray-200">Current Role (Demo)</p>
+            <p class="text-[10px] text-gray-500 leading-tight mb-2">Change your role to see how permissions and data visibility change in the system.</p>
+            <div class="flex items-center gap-2">
+               <button (click)="currentUserRole.set('admin')" [class.bg-blue-600]="currentUserRole() === 'admin'" [class.bg-gray-800]="currentUserRole() !== 'admin'" class="flex-1 py-1.5 rounded-lg text-xs font-bold text-white transition-colors border border-gray-700">Admin</button>
+               <button (click)="currentUserRole.set('manager')" [class.bg-blue-600]="currentUserRole() === 'manager'" [class.bg-gray-800]="currentUserRole() !== 'manager'" class="flex-1 py-1.5 rounded-lg text-xs font-bold text-white transition-colors border border-gray-700">Manager</button>
+               <button (click)="currentUserRole.set('viewer')" [class.bg-blue-600]="currentUserRole() === 'viewer'" [class.bg-gray-800]="currentUserRole() !== 'viewer'" class="flex-1 py-1.5 rounded-lg text-xs font-bold text-white transition-colors border border-gray-700">Viewer</button>
+            </div>
          </div>
+
+         @if (currentUserRole() === 'admin') {
+           <div class="flex items-center justify-between p-3 bg-[#1a1a1a] rounded-xl border border-gray-800">
+             <div class="flex-grow pr-4">
+               <p class="text-sm font-medium text-gray-200">Auto-Save 1 min Clips</p>
+               <p class="text-[10px] text-gray-500 mt-1 leading-tight">Automatically downloads 60s video and text log on high-confidence alerts.</p>
+             </div>
+             <button (click)="autoSaveEnabled.set(!autoSaveEnabled())" 
+               class="w-11 h-6 rounded-full transition-colors relative flex-shrink-0"
+               [ngClass]="autoSaveEnabled() ? 'bg-blue-600' : 'bg-gray-700'">
+               <div class="w-5 h-5 rounded-full bg-white absolute top-0.5 transition-all shadow"
+                 [ngClass]="autoSaveEnabled() ? 'left-5' : 'left-0.5'"></div>
+             </button>
+           </div>
+         }
          
          @if (user()) {
            <div class="pt-4 border-t border-gray-800 flex items-center justify-between px-2">
@@ -299,9 +318,11 @@
          <div class="p-6 overflow-y-auto">
             <div class="flex items-center justify-between mb-2">
                <span class="text-xs font-mono text-gray-500"><mat-icon class="text-[14px] w-3.5 h-3.5 inline-block align-text-bottom">schedule</mat-icon> {{ selectedEvent()!.timestamp | date:'medium' }}</span>
-               <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-gray-900 border border-gray-700 text-gray-300">
-                 CONFIDENCE: {{ selectedEvent()!.confidence | percent }}
-               </span>
+               @if (canSeeConfidence()) {
+                 <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-gray-900 border border-gray-700 text-gray-300">
+                   CONFIDENCE: {{ selectedEvent()!.confidence | percent }}
+                 </span>
+               }
             </div>
             <p class="text-sm text-gray-300 leading-relaxed font-medium">{{ selectedEvent()!.description }}</p>
          </div>
