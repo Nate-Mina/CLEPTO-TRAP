@@ -1,19 +1,21 @@
-<div class="h-[100dvh] w-full flex flex-col bg-black font-sans text-gray-200 overflow-hidden relative">
+<div class="h-[100dvh] w-full flex flex-col font-sans text-gray-200 overflow-hidden relative transition-colors duration-500" [ngClass]="'theme-' + currentTheme()">
   <!-- Top App Bar -->
-  <mat-toolbar class="flex-shrink-0 z-20 flex items-center justify-between px-4 border-b border-gray-900 bg-black/90 backdrop-blur-lg">
+  <mat-toolbar class="flex-shrink-0 z-20 flex items-center justify-between px-4 border-b border-white/5 bg-black/40 backdrop-blur-xl">
     <div class="flex items-center gap-3">
       <div class="p-1.5 rounded-full bg-blue-500/10 text-blue-400">
         <mat-icon class="text-[20px] w-5 h-5 flex items-center justify-center">videocam</mat-icon>
       </div>
       <div class="flex flex-col leading-none justify-center">
-        <span class="font-bold text-lg tracking-tight text-white">Clepto Trap</span>
-        <span class="text-[10px] font-mono text-gray-500 uppercase tracking-widest mt-0.5">AI Security</span>
+        <span class="font-bold text-lg tracking-tight text-white bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Clepto Trap</span>
+        <span class="text-[10px] font-mono text-gray-500 uppercase tracking-widest mt-0.5 animate-pulse">AI Security Active</span>
       </div>
     </div>
     <div class="flex items-center gap-3">
       @if (authLoaded()) {
         @if (user()) {
-           <img [src]="user()?.photoURL || 'https://via.placeholder.com/32'" class="w-7 h-7 rounded-full border border-gray-800" (click)="logout()">
+           <button class="p-0 border-0 bg-transparent cursor-pointer" (click)="logout()" aria-label="Sign out">
+             <img [src]="user()?.photoURL || 'https://via.placeholder.com/32'" class="w-7 h-7 rounded-full border border-gray-800" alt="User profile">
+           </button>
         } @else {
           <button mat-icon-button (click)="login()" class="text-gray-400">
              <mat-icon>account_circle</mat-icon>
@@ -27,7 +29,7 @@
   <main class="flex-grow overflow-y-auto pb-24 scrollbar-hide flex flex-col w-full">
     
     <!-- Camera Feeds Stack -->
-    <div class="flex flex-col gap-2 p-2">
+    <div class="flex flex-col gap-3 p-3 bg-gradient-to-b from-gray-950/50 to-transparent">
       @if (feeds().length === 0) {
         <div class="bg-[#111] rounded-2xl border border-gray-800 flex flex-col items-center justify-center min-h-[40vh] p-6 text-center shadow-inner">
           <div class="w-16 h-16 rounded-full bg-gray-900 flex items-center justify-center mb-4 border border-gray-800">
@@ -132,27 +134,50 @@
             <mat-icon class="text-[16px] w-4 h-4">list_alt</mat-icon>
             Recent Incidents
           </h2>
-          <button (click)="generateDigest('daily')" [disabled]="isGeneratingDigest() || events().length === 0" class="text-[10px] font-mono text-blue-400 hover:text-blue-300 disabled:opacity-50 flex items-center gap-1 transition-colors" [class.hidden]="!canGenerateDigest()">
-            @if (isGeneratingDigest()) {
-               <mat-icon class="text-[12px] w-3 h-3 animate-spin">data_usage</mat-icon>
-            } @else {
-               <mat-icon class="text-[12px] w-3 h-3">auto_awesome</mat-icon>
-            }
-            AI SUMMARY
-          </button>
+          <div class="flex items-center gap-3">
+             <button (click)="exportEvents('csv')" [disabled]="events().length === 0" class="text-[10px] font-mono text-gray-400 hover:text-white disabled:opacity-50 flex items-center gap-1 transition-colors" [class.hidden]="!canGenerateDigest()">
+                <mat-icon class="text-[12px] w-3 h-3">download</mat-icon>
+                CSV
+             </button>
+             <button (click)="exportEvents('json')" [disabled]="events().length === 0" class="text-[10px] font-mono text-gray-400 hover:text-white disabled:opacity-50 flex items-center gap-1 transition-colors" [class.hidden]="!canGenerateDigest()">
+                <mat-icon class="text-[12px] w-3 h-3">download</mat-icon>
+                JSON
+             </button>
+             <button (click)="generateDigest('daily')" [disabled]="isGeneratingDigest() || events().length === 0" class="text-[10px] font-mono text-blue-400 hover:text-blue-300 disabled:opacity-50 flex items-center gap-1 transition-colors" [class.hidden]="!canGenerateDigest()">
+               @if (isGeneratingDigest()) {
+                  <mat-icon class="text-[12px] w-3 h-3 animate-spin">data_usage</mat-icon>
+               } @else {
+                  <mat-icon class="text-[12px] w-3 h-3">auto_awesome</mat-icon>
+               }
+               AI SUMMARY
+             </button>
+          </div>
         </div>
         
         <div class="flex flex-col gap-2">
-          @if (events().length === 0) {
+          @if (isEventsLoading()) {
+            <div class="flex flex-col gap-2">
+              @for (i of [1,2,3]; track i) {
+                <div class="animate-pulse bg-gray-900/20 rounded-xl border border-gray-800 h-20"></div>
+              }
+            </div>
+          } @else if (eventsError()) {
+            <div class="bg-red-500/10 rounded-xl border border-red-500/20 p-6 flex flex-col items-center justify-center text-center">
+              <mat-icon class="text-3xl text-red-500/50 mb-2">cloud_off</mat-icon>
+              <p class="text-[10px] uppercase tracking-widest text-red-400 font-bold">Connection Error</p>
+              <p class="text-[10px] text-gray-500 mt-1 max-w-[200px] leading-tight">{{ eventsError() }}</p>
+              <button (click)="user() && subscribeToEvents(user()!.uid)" class="mt-3 px-4 py-1.5 rounded-full bg-red-500/20 text-red-400 text-[10px] font-bold hover:bg-red-500/30 transition-colors uppercase tracking-wider">Retry Sync</button>
+            </div>
+          } @else if (events().length === 0) {
             <div class="bg-[#111] rounded-xl border border-gray-800 p-6 flex flex-col items-center justify-center text-gray-500 text-center font-mono">
               <mat-icon class="text-3xl mb-2 opacity-30">shield</mat-icon>
               <p class="text-[10px] uppercase tracking-widest">No Alerts Recorded</p>
             </div>
           } @else {
             @for (event of events(); track event.id) {
-              <div class="bg-[#111] rounded-xl border border-gray-800 p-3 flex gap-3 cursor-pointer hover:bg-[#1a1a1a] transition-all group active:scale-[0.98]" (click)="selectedEvent.set(event)">
+              <button class="w-full text-left bg-[#111] rounded-xl border border-gray-800 p-3 flex gap-3 cursor-pointer hover:bg-[#1a1a1a] transition-all group active:scale-[0.98]" (click)="selectedEvent.set(event)">
                 <div class="relative w-16 h-16 flex-shrink-0">
-                  <img [src]="event.imageUrl" class="w-full h-full object-cover rounded-lg shadow-sm border border-gray-700 grayscale-[0.2]" alt="Incident snapshot">
+                  <img [src]="event.imageUrl" class="w-full h-full object-cover rounded-lg shadow-sm border border-gray-700 grayscale-[0.2] group-hover:grayscale-0 transition-all" alt="Incident snapshot thumbnail">
                   
                   @if (videoBlobs().has(event.id)) {
                     <div class="absolute inset-0 bg-black/40 flex items-center justify-center rounded-lg group-hover:bg-black/20 transition-colors">
@@ -166,14 +191,19 @@
                 </div>
                 <div class="flex-grow flex flex-col justify-center">
                   <div class="flex items-center justify-between mb-1">
-                    <span class="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded" [ngClass]="getEventColor(event.type).replace('bg-', 'bg-opacity-20 bg-')">
-                      {{ event.type }}
-                    </span>
-                    <span class="text-[9px] font-mono text-gray-500">{{ event.timestamp | date:'short' }}</span>
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shadow-sm" [ngClass]="getEventColor(event.type).replace('bg-', 'bg-opacity-20 bg-')">
+                        {{ event.type }}
+                      </span>
+                      @if (canSeeConfidence()) {
+                        <span class="text-[8px] font-mono font-bold text-gray-600 uppercase">{{ event.confidence | percent:'1.0-0' }}</span>
+                      }
+                    </div>
+                    <span class="text-[9px] font-mono text-gray-500">{{ event.timestamp | date:'shortTime' }}</span>
                   </div>
-                  <p class="text-[11px] text-gray-400 line-clamp-2 leading-snug">{{ event.description }}</p>
+                  <p class="text-[11px] text-gray-400 line-clamp-2 leading-snug group-hover:text-gray-200 transition-colors">{{ event.description }}</p>
                 </div>
-              </div>
+              </button>
             }
           }
         </div>
@@ -224,6 +254,56 @@
        </div>
        
        <div class="space-y-6">
+         <!-- Theme Settings -->
+         <div class="flex flex-col gap-2 p-3 bg-black/30 rounded-xl border border-white/5">
+            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2 mb-1">
+              <mat-icon class="text-[14px] w-3.5 h-3.5">palette</mat-icon>
+              Interface Theme
+            </p>
+            <div class="grid grid-cols-2 gap-2 mt-1">
+               <button (click)="setTheme('stealth')" 
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg border text-[9px] font-bold uppercase tracking-wider transition-all"
+                 [class.bg-white/5]="currentTheme() === 'stealth'"
+                 [class.border-blue-500/30]="currentTheme() === 'stealth'"
+                 [class.border-white/5]="currentTheme() !== 'stealth'"
+                 [class.text-white]="currentTheme() === 'stealth'"
+                 [class.text-gray-500]="currentTheme() !== 'stealth'">
+                 <div class="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
+                 Stealth
+               </button>
+               <button (click)="setTheme('crimson')" 
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg border text-[9px] font-bold uppercase tracking-wider transition-all"
+                 [class.bg-white/5]="currentTheme() === 'crimson'"
+                 [class.border-red-500/30]="currentTheme() === 'crimson'"
+                 [class.border-white/5]="currentTheme() !== 'crimson'"
+                 [class.text-white]="currentTheme() === 'crimson'"
+                 [class.text-gray-500]="currentTheme() !== 'crimson'">
+                 <div class="w-1.5 h-1.5 rounded-full bg-red-500"></div>
+                 Crimson
+               </button>
+               <button (click)="setTheme('cyberpunk')" 
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg border text-[9px] font-bold uppercase tracking-wider transition-all"
+                 [class.bg-white/5]="currentTheme() === 'cyberpunk'"
+                 [class.border-purple-500/30]="currentTheme() === 'cyberpunk'"
+                 [class.border-white/5]="currentTheme() !== 'cyberpunk'"
+                 [class.text-white]="currentTheme() === 'cyberpunk'"
+                 [class.text-gray-500]="currentTheme() !== 'cyberpunk'">
+                 <div class="w-1.5 h-1.5 rounded-full bg-fuchsia-500"></div>
+                 Cyber
+               </button>
+               <button (click)="setTheme('classic')" 
+                 class="flex items-center gap-2 px-3 py-2 rounded-lg border text-[9px] font-bold uppercase tracking-wider transition-all"
+                 [class.bg-black/5]="currentTheme() === 'classic'"
+                 [class.border-emerald-500/30]="currentTheme() === 'classic'"
+                 [class.border-white/5]="currentTheme() !== 'classic'"
+                 [class.text-white]="currentTheme() === 'classic'"
+                 [class.text-gray-500]="currentTheme() !== 'classic'">
+                 <div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                 Light
+               </button>
+            </div>
+         </div>
+         
          <!-- Role Selector for Demo purposes -->
          <div class="flex flex-col gap-2 p-3 bg-[#1a1a1a] rounded-xl border border-gray-800">
             <p class="text-sm font-medium text-gray-200">Current Role (Demo)</p>
@@ -253,7 +333,7 @@
          @if (user()) {
            <div class="pt-4 border-t border-gray-800 flex items-center justify-between px-2">
              <div class="flex items-center gap-3">
-               <img [src]="user()?.photoURL || 'https://via.placeholder.com/32'" class="w-8 h-8 rounded-full border border-gray-700 shadow-md">
+               <img [src]="user()?.photoURL || 'https://via.placeholder.com/32'" class="w-8 h-8 rounded-full border border-gray-700 shadow-md" alt="Settings user profile">
                <span class="text-xs font-medium text-gray-300">Signed In</span>
              </div>
              <button mat-stroked-button (click)="logout()" class="border-gray-800 text-gray-400 font-mono text-xs hover:text-red-400 hover:border-red-900/50">Sign Out</button>
@@ -306,7 +386,7 @@
             <video [src]="videoBlobs().get(selectedEvent()!.id)" controls autoplay class="w-full bg-black max-h-[50vh] object-contain"></video>
          } @else {
             <div class="relative w-full bg-black max-h-[50vh] flex items-center justify-center">
-               <img [src]="selectedEvent()!.imageUrl" class="w-full h-full object-contain max-h-[50vh]">
+               <img [src]="selectedEvent()!.imageUrl" class="w-full h-full object-contain max-h-[50vh]" alt="Full size incident snapshot">
                <div class="absolute inset-0 flex items-center justify-center bg-black/60">
                  <div class="text-center font-mono text-gray-400">
                     <mat-icon class="text-4xl mb-2 opacity-50">videocam_off</mat-icon>

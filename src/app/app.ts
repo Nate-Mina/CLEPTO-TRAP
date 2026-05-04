@@ -7,10 +7,8 @@ import {
   ViewChild,
   signal,
   computed,
-  inject,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatCardModule } from '@angular/material/card';
@@ -20,7 +18,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { GoogleGenAI, Type } from '@google/genai';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { collection, query, orderBy, limit, onSnapshot, addDoc, serverTimestamp, doc, getDocFromServer, Timestamp } from 'firebase/firestore';
-import { auth, db, googleAuthProvider } from './firebase';
+import { auth, db, googleAuthProvider, handleFirestoreError, OperationType } from './firebase';
 
 interface SecurityEvent {
   id: string;
@@ -72,6 +70,8 @@ export class App implements OnDestroy, OnInit {
   user = signal<User | null>(null);
   authLoaded = signal(false);
   
+  currentTheme = signal<'stealth' | 'crimson' | 'cyberpunk' | 'classic'>('stealth');
+  
   autoSaveEnabled = signal(true);
   showSettings = signal(false);
   dailyDigest = signal<string | null>(null);
@@ -79,6 +79,9 @@ export class App implements OnDestroy, OnInit {
   
   videoBlobs = signal<Map<string, string>>(new Map());
   selectedEvent = signal<SecurityEvent | null>(null);
+
+  isEventsLoading = signal(false);
+  eventsError = signal<string | null>(null);
 
   currentUserRole = signal<'admin' | 'manager' | 'viewer'>('admin');
   
@@ -96,6 +99,15 @@ export class App implements OnDestroy, OnInit {
   }
 
   ngOnInit() {
+    const savedTheme = localStorage.getItem('clepto_trap_theme');
+    const themes = ['stealth', 'crimson', 'cyberpunk', 'classic'] as const;
+    const isTheme = (t: string | null): t is typeof themes[number] => 
+      !!t && (themes as readonly string[]).includes(t);
+      
+    if (isTheme(savedTheme)) {
+      this.currentTheme.set(savedTheme);
+    }
+
     onAuthStateChanged(auth, (user) => {
       this.user.set(user);
       this.authLoaded.set(true);
@@ -135,6 +147,9 @@ export class App implements OnDestroy, OnInit {
   }
 
   subscribeToEvents(userId: string) {
+    this.isEventsLoading.set(true);
+    this.eventsError.set(null);
+    const path = `users/${userId}/events`;
     const eventsRef = collection(db, 'users', userId, 'events');
     const q = query(eventsRef, orderBy('timestamp', 'desc'), limit(50));
     this.eventsUnsubscribe = onSnapshot(q, (snapshot) => {
@@ -157,9 +172,11 @@ export class App implements OnDestroy, OnInit {
         } as SecurityEvent);
       });
       this.events.set(data);
+      this.isEventsLoading.set(false);
     }, (error) => {
-       console.error("Error subscribing to events: ", error);
-       alert("Error fetching events. Please ensure your permissions are correct.");
+       this.isEventsLoading.set(false);
+       this.eventsError.set(error.message);
+       handleFirestoreError(error, OperationType.GET, path);
     });
   }
 
@@ -178,11 +195,11 @@ export class App implements OnDestroy, OnInit {
   }
 
   async handleFileUpload(event: Event) {
-    const files = (event.target as HTMLInputElement).files;
-    if (!files) return;
+    const fileList = (event.target as HTMLInputElement).files;
+    if (!fileList) return;
     
-    for (let i = 0; i < files.length; i++) {
-       const file = files[i];
+    const files = Array.from(fileList);
+    for (const file of files) {
        const id = Math.random().toString(36).substring(2, 9);
        const feed: StreamFeed = {
          id,
@@ -203,9 +220,13 @@ export class App implements OnDestroy, OnInit {
           if (video && feed.videoUrl) {
              video.src = feed.videoUrl;
              video.play().then(() => {
-                const stream = (video as any).captureStream?.() || (video as any).mozCaptureStream?.();
+                // Use type assertion to access non-standard captureStream
+                const videoEl = video as HTMLVideoElement & { captureStream?: () => MediaStream, mozCaptureStream?: () => MediaStream };
+                const stream = videoEl.captureStream?.() || videoEl.mozCaptureStream?.();
                 if (stream) this.setupRecorder(id, stream);
-             }).catch(e => console.error("Auto-play blocked:", e));
+             }).catch(() => {
+                // Auto-play blocked - user interaction required
+             });
           }
        }, 200);
     }
@@ -263,7 +284,7 @@ export class App implements OnDestroy, OnInit {
   removeFeed(id: string) {
     const state = this.recorders.get(id);
     if (state) {
-       try { state.recorder.stop(); } catch(e){}
+       try { state.recorder.stop(); } catch { /* ignore stop error */ }
        this.recorders.delete(id);
     }
     const feed = this.feeds().find(f => f.id === id);
@@ -321,7 +342,7 @@ export class App implements OnDestroy, OnInit {
             newBuffer.shift();
          }
          
-         let newFrameCount = feed.frameCount + 1;
+         const newFrameCount = feed.frameCount + 1;
          
          if (newBuffer.length === 5 && newFrameCount % 5 === 0) {
             this.updateFeed(feed.id, { frameBuffer: newBuffer, frameCount: newFrameCount, aiStage: 'Analyzing sequence...', isAnalyzing: true });
@@ -352,37 +373,41 @@ export class App implements OnDestroy, OnInit {
 
   private async analyzeTemporalSequence(feedId: string, frames: string[], lastFrameUrl: string) {
     try {
-      const prompt = `You are Lexius, a production-grade behavioral AI system.
-You are analyzing a temporal sequence of 5 frames from a retail security camera representing the last 10 seconds of footage (Temporal Action Recognition).
-Lexius specifically differentiates itself by focusing on ACTIONS (gestures of concealment, hand-to-pocket, hand-to-bag) rather than biometrics. Privacy-First: DO NOT identify facial features. Focus ONLY on human skeletons, body mechanics, and hands.
+      const prompt = `You are Lexius, a high-fidelity behavioral analysis AI specialized in retail loss prevention.
+You are analyzing a temporal sequence of 5 frames from a retail security camera representing the 10-second window leading up to the current moment.
 
-Analyze the temporal sequence and classify the primary activity into one of the following categories:
-1. 'shoplifting': Actively hiding unpaid merchandise over the sequence. Look for hands grabbing items and quickly moving them into clothing, bags, or strollers.
-2. 'suspicious': Staging items, lingering in blind spots, or erratic body movements over the 10 seconds without confirmed concealment.
-3. 'fall': A person collapsing or on the ground over the sequence.
-4. 'normal': Customers brushing past, carrying items openly, looking at phones, or typical interactions.
+DIFFERENTIATION PROTOCOL:
+1. 'shoplifting' (THEFT): Requires confirmed CONCEALMENT or REMOVAL of intent. Look for:
+   - "The Shield": Using the body to hide a hand grabbing an item.
+   - "The Transfer": Rapidly moving an item from a shelf into a pocket, waistband, bag, or under clothing.
+   - "The Double-Handle": Picking up two items, but only putting one back while retaining the other in a palm or sleeve.
+2. 'suspicious' (LOITERING/STAGING): Unusual behavior WITHOUT confirmed concealment. Look for:
+   - "Scan & Prowl": Looking at cameras or employees rather than merchandise.
+   - "The Staging": Moving high-value items to a low-visibility area (blind spot) to be picked up later.
+   - "Lingering": Remaining in a high-theft zone (e.g., electronics, cosmetics) for >30 seconds without interacting with products in a standard way.
+3. 'fall' (SAFETY): Rapid vertical descent of a human skeleton ending in a prone or seated position on the floor.
+4. 'normal' (STANDARD): Interaction with products followed by placing them in a cart, or simply walking through aisles.
 
-CRITICAL: Evaluate the *sequence* of actions across the frames. For example, "Frame 1: reaching to shelf. Frame 3: placing item in coat pocket" equals shoplifting. "Holding an item throughout" equals normal.
+ACTION DESCRIPTION REQUIREMENTS:
+- Describe the movement trajectory: (e.g., "Right hand moved from shelf at chest height to inner left jacket pocket in under 2 seconds").
+- Identify environmental context: (e.g., "Near the end-of-aisle display of premium headphones").
+- Specify the gesture: (e.g., "Palming", "Sweeping into bag", "Shoulder-checking behavior").
+- Privacy: Focus on body mechanics and hand-object interaction. DO NOT identify faces.
 
-Provide a highly detailed and actionable 'description':
-- For 'shoplifting', you MUST specify the exact type of concealment observed (e.g., "Subject grabbed item with right hand and concealed it inside left jacket pocket", or "Item rapidly dropped into unzipped personal backpack").
-- For 'suspicious', you MUST elaborate on the exact erratic behavior (e.g., "Subject looking repeatedly over left shoulder while staging high-value item near shelf edge", or "Pacing continuously around endcap without selecting merchandise").
-- For normal scenarios, provide a brief description of the mundane activity.
-
-Return a JSON object with 'type', 'description' (detailed and actionable explanation of the movements), and 'confidence' (number between 0 and 1).`;
+Return a JSON object with 'type', 'description' (a technical, chronological account of the observed sequence), and 'confidence' (0.0 to 1.0).`;
 
       // Construct parts array for Gemini 1.5/3.0 to process multiple images
-      const contentsArray: any[] = frames.map((b64, idx) => ({
+      const contentsArray: { inlineData: { data: string, mimeType: string } }[] = frames.map((b64) => ({
         inlineData: {
           data: b64,
           mimeType: 'image/jpeg',
         }
       }));
-      contentsArray.push(prompt);
+      const contentsAndPrompt: (string | { inlineData: { data: string, mimeType: string } })[] = [...contentsArray, prompt];
 
       const response = await this.ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: contentsArray,
+        contents: contentsAndPrompt,
         config: {
           responseMimeType: 'application/json',
           responseSchema: {
@@ -426,16 +451,21 @@ Return a JSON object with 'type', 'description' (detailed and actionable explana
           
           let finalEventId = newEvent.id;
           if (this.user()) {
-            // Save to Firestore
-            const eventsRef = collection(db, 'users', this.user()!.uid, 'events');
-            const docRef = await addDoc(eventsRef, {
-               type: newEvent.type,
-               description: newEvent.description,
-               confidence: newEvent.confidence,
-               imageUrl: newEvent.imageUrl,
-               timestamp: serverTimestamp()
-            });
-            finalEventId = docRef.id;
+            const path = `users/${this.user()!.uid}/events`;
+            try {
+              // Save to Firestore
+              const eventsRef = collection(db, 'users', this.user()!.uid, 'events');
+              const docRef = await addDoc(eventsRef, {
+                 type: newEvent.type,
+                 description: newEvent.description,
+                 confidence: newEvent.confidence,
+                 imageUrl: newEvent.imageUrl,
+                 timestamp: serverTimestamp()
+              });
+              finalEventId = docRef.id;
+            } catch (error) {
+              handleFirestoreError(error, OperationType.CREATE, path);
+            }
           } else {
              // Local only mode
              newEvent.id = finalEventId;
@@ -448,7 +478,8 @@ Return a JSON object with 'type', 'description' (detailed and actionable explana
           }, 5000); // give 5 seconds for consequence info
         }
       }
-    } catch (error: any) {
+    } catch (err: unknown) {
+      const error = err as { status?: number, message?: string };
       console.error('Error analyzing temporal sequence:', error);
       
       // Graceful error handling for Rate Limits
@@ -504,6 +535,11 @@ Return a JSON object with 'type', 'description' (detailed and actionable explana
   
   toggleSettings() {
     this.showSettings.set(!this.showSettings());
+  }
+
+  setTheme(theme: 'stealth' | 'crimson' | 'cyberpunk' | 'classic') {
+    this.currentTheme.set(theme);
+    localStorage.setItem('clepto_trap_theme', theme);
   }
 
   private setupRecorder(id: string, stream: MediaStream) {
@@ -578,6 +614,55 @@ Return a JSON object with 'type', 'description' (detailed and actionable explana
 
   closeDigest() {
     this.dailyDigest.set(null);
+  }
+
+  exportEvents(format: 'json' | 'csv') {
+    const events = this.events().filter(e => e.type !== 'error').map(e => ({
+       id: e.id,
+       timestamp: typeof e.timestamp === 'string' ? e.timestamp : new Date(e.timestamp).toISOString(),
+       type: e.type,
+       confidence: e.confidence,
+       description: e.description
+    }));
+    
+    if (events.length === 0) {
+      return;
+    }
+    
+    let dataUrl = '';
+    let filename = '';
+    
+    if (format === 'json') {
+       const json = JSON.stringify(events, null, 2);
+       const blob = new Blob([json], { type: 'application/json' });
+       dataUrl = URL.createObjectURL(blob);
+       filename = `security_events_${new Date().toISOString().split('T')[0]}.json`;
+    } else if (format === 'csv') {
+       const header = ['id', 'timestamp', 'type', 'confidence', 'description'].join(',');
+       const rows = events.map(e => [
+          e.id,
+          `"${e.timestamp}"`,
+          e.type,
+          e.confidence.toFixed(2),
+          `"${e.description.replace(/"/g, '""')}"`
+       ].join(','));
+       const csv = [header, ...rows].join('\n');
+       const blob = new Blob([csv], { type: 'text/csv' });
+       dataUrl = URL.createObjectURL(blob);
+       filename = `security_events_${new Date().toISOString().split('T')[0]}.csv`;
+    }
+
+    const aParams = document.createElement('a');
+    aParams.style.display = 'none';
+    aParams.href = dataUrl;
+    aParams.download = filename;
+    document.body.appendChild(aParams);
+    aParams.click();
+    
+    setTimeout(() => {
+       document.body.removeChild(aParams);
+       URL.revokeObjectURL(dataUrl);
+    }, 1000);
   }
 
   async generateDigest(timeframe: 'daily' | 'weekly' = 'daily') {

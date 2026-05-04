@@ -1,7 +1,8 @@
 {
   "name": "Clepto Trap - AI Merch Security",
-  "description": "Real-time AI behavioral detection against shoplifters.",
+  "description": "Real-time AI behavioral detection against shoplifters.(docker support)",
   "requestFramePermissions": [
     "camera"
-  ]
+  ],
+  "majorCapabilities": []
 }

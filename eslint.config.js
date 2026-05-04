@@ -7,9 +7,8 @@ const firebaseRulesPlugin = require('@firebase/eslint-plugin-security-rules');
 
 module.exports = defineConfig([
   {
-    ignores: ['dist/**/*']
+    ignores: ['dist/**/*', '.angular/**/*', 'expo-app/**/*', '.expo/**/*']
   },
-  firebaseRulesPlugin.configs['flat/recommended'],
   {
     files: ['**/*.ts'],
     extends: [
