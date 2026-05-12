@@ -15,7 +15,7 @@
     "react-native": "0.73.6",
     "expo-camera": "~14.1.1",
     "react-native-safe-area-context": "4.8.2",
-    "lucide-react-native": "^0.368.0",
+    "lucide-react-native": "^0.577.0",
     "@react-navigation/native": "^6.1.17",
     "@react-navigation/bottom-tabs": "^6.5.20"
   },
